@@ -9,15 +9,18 @@ n = A.shape[0]  # 0 -> row, 1 -> col
 
 eig_val, eig_vec = np.linalg.eig(A)  # eigenvalue
 
-print(f"eig_val = {eig_val}", file=sys.stderr)
-print(f"eig_vec = {eig_vec}", file=sys.stderr)
+# print(f"eig_val = {eig_val}", file=sys.stderr)
+# print(f"eig_vec = {eig_vec}", file=sys.stderr)
 
-Max_eig = max(eig_val)
+max_eig = abs(np.max(eig_val))  # max Modulus
 
-CI = (Max_eig - n) / (n - 1)
+print(max_eig, file=sys.stderr)
+
+CI = (max_eig - n) / (n - 1)
 RI = [
-    0,
-    0.0001,
+    0,  # indexed from 1
+    0,  # n = 1
+    0.0001,  # 这里n = 2时，一定是一致矩阵，所以CI = 0
     0.52,
     0.89,
     1.12,
@@ -32,13 +35,12 @@ RI = [
     1.58,
     1.59,
 ]
-# 注意哦，这里的RI最多支持 n = 15
-# 这里n=2时，一定是一致矩阵，所以CI = 0，我们为了避免分母为0，将这里的第二个元素改为了很接近0的正数
 
 CR = CI / RI[n]
 
-print("一致性指标CI=", CI)
-print("一致性比例CR=", CR)
+print(f"一致性指标CI={CI:.3f}")
+print(f"一致性比例CR={CR:.3f}")
+print(type(CI), file=sys.stderr)
 
 if CR < 0.10:
     print("因为CR<0.10，所以该判断矩阵A的一致性可以接受!")
