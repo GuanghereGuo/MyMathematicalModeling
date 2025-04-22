@@ -24,7 +24,8 @@ y = [pulp.LpVariable(f"y_{j+1}", lowBound=0) for j in range(6)]  # From B to sit
 
 # Set the objective function
 prob += sum(x[j] * d_A[j] + y[j] * d_B[j] for j in range(6)), "Total_Ton_Kilometers"
-prob += sum(x[j] * d_A[j] + y[j] * d_B[j] for j in range(6)), "Total_Ton_Kilometers"
+prob += sum(x) <= 20, "Supply_A_Constraint"  # Supply constraint for Yard A
+prob += sum(y) <= 20, "Supply_B_Constraint"  # Supply constraint for Yard B
 
 # Add demand constraints
 for j in range(6):
@@ -39,15 +40,20 @@ print(f"Solver Status: {status}")
 
 # Output the optimal supply plan
 print("Optimal Daily Supply Plan:")
+sum = 0
 for j in range(6):
     from_A = x[j].varValue
     from_B = y[j].varValue
     site_name = ["I", "II", "III", "IV", "V", "VI"][j]
     if from_A > 0:
         print(f"From Yard A to Site {site_name}: {from_A} tons")
+        sum += from_A
     if from_B > 0:
         print(f"From Yard B to Site {site_name}: {from_B} tons")
+        sum += from_B
+
 
 # Output the minimal total ton-kilometers
 total_ton_km = pulp.value(prob.objective)
 print(f"Minimal Total Ton-Kilometers: {total_ton_km:.3f}")
+print(f"Total Supply: {sum:.3f} tons")
