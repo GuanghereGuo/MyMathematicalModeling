@@ -3,6 +3,7 @@
   <component name="Black">
     <option name="enabledOnReformat" value="true" />
     <option name="enabledOnSave" value="true" />
+    <option name="pathToExecutable" value="C:\ProgramData\miniconda3\Scripts\black.exe" />
     <option name="sdkName" value="MyMathematicalModeling" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="MyMathematicalModeling" project-jdk-type="Python SDK" />
