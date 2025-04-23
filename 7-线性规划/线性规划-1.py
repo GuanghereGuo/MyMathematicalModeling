@@ -3,10 +3,7 @@ import scipy.optimize as opt
 
 c = np.array([-20, -30, -45])  # 目标函数系数
 
-A_ub = np.array([
-    [4, 8, 15],
-    [1, 1, 1]
-])
+A_ub = np.array([[4, 8, 15], [1, 1, 1]])
 
 b_ub = np.array([100, 20])  # 不等式约束的右侧值
 bounds = [(0, None), (0, None), (0, None)]  # 变量的边界
