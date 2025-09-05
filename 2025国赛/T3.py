@@ -1,12 +1,8 @@
 import numpy as np
 from scipy.optimize import differential_evolution
-import pandas as pd
+import openpyxl
 import time
 import os
-
-# =============================================================================
-# 1. 全局常量与几何计算函数 (基础模块)
-# =============================================================================
 
 # 物理和环境参数
 P_M1_0 = np.array([20000.0, 0.0, 2000.0])  # 导弹初始位置
@@ -26,6 +22,7 @@ key_points = [
     np.array([7, 193.0, 10.0]),
     np.array([-7, 207.0, 10.0]),
     np.array([-7, 193.0, 10.0]),
+    # np.array([0.0, 200.0, 0]),
 ]
 
 # 导弹轨迹预计算
@@ -55,14 +52,7 @@ def dist_point_to_segment(p, a, b):
     return np.linalg.norm(p - pb)
 
 
-# =============================================================================
-# 2. 计算单枚烟幕弹遮蔽区间的函数
-# =============================================================================
-
-
 def get_shielding_intervals(v_FY1, theta_rad, t_drop, t_fuse, P_FY1_0, dt=1e-2):
-    """计算单枚烟幕弹产生的有效遮蔽时间区间列表"""
-    # --- 轨迹与起爆点计算 ---
     d_FY1 = np.array([np.cos(theta_rad), np.sin(theta_rad), 0.0])
     P_drop = P_FY1_0 + v_FY1 * t_drop * d_FY1
     v_drop = v_FY1 * d_FY1
@@ -72,7 +62,6 @@ def get_shielding_intervals(v_FY1, theta_rad, t_drop, t_fuse, P_FY1_0, dt=1e-2):
     def P_C(t):
         return P_detonate + np.array([0, 0, -v_sink * (t - t_detonate)])
 
-    # --- 模拟并记录遮蔽时刻 ---
     shielded_times = []
     t_start = t_detonate
     t_end = t_detonate + 20.0
@@ -82,13 +71,12 @@ def get_shielding_intervals(v_FY1, theta_rad, t_drop, t_fuse, P_FY1_0, dt=1e-2):
         p_c_t = P_C(t)
         is_fully_shielded = True
         for p_key in key_points:
-            if dist_point_to_segment(p_c_t, p_m1_t, p_key) >= R_C:
+            if dist_point_to_segment(p_c_t, p_m1_t, p_key) > R_C:
                 is_fully_shielded = False
                 break
         if is_fully_shielded:
             shielded_times.append(t)
 
-    # --- 将离散的遮蔽时刻转换为连续的时间区间 ---
     if not shielded_times:
         return []
 
@@ -103,13 +91,7 @@ def get_shielding_intervals(v_FY1, theta_rad, t_drop, t_fuse, P_FY1_0, dt=1e-2):
     return intervals
 
 
-# =============================================================================
-# 3. 合并区间并计算总长度的函数
-# =============================================================================
-
-
 def calculate_union_length(intervals):
-    """计算区间列表并集的总长度"""
     if not intervals:
         return 0
 
@@ -134,11 +116,6 @@ def calculate_union_length(intervals):
     return total_length
 
 
-# =============================================================================
-# 4. 问题三的目标函数与优化过程
-# =============================================================================
-
-
 def objective_function_Q3(params):
     """问题三的目标函数，使用变量变换法处理约束"""
     v_FY1, theta_rad, t_drop1, t_fuse1, dt_drop2, t_fuse2, dt_drop3, t_fuse3 = params
@@ -148,7 +125,6 @@ def objective_function_Q3(params):
 
     all_intervals = []
 
-    # 计算三枚弹药各自的遮蔽区间
     all_intervals.extend(
         get_shielding_intervals(v_FY1, theta_rad, t_drop1, t_fuse1, P_FY1_0)
     )
@@ -161,7 +137,6 @@ def objective_function_Q3(params):
 
     total_length = calculate_union_length(all_intervals)
 
-    # 优化器默认求最小值，所以返回总时长的负数
     return -total_length
 
 
@@ -169,20 +144,17 @@ def run_optimization_Q3():
     """执行问题三的完整优化流程"""
     print("--- 问题三：单无人机三弹药优化 ---")
 
-    # 1. 定义变换后变量的搜索边界
-    # [v, θ, t_drop1, t_fuse1, Δt_drop2, t_fuse2, Δt_drop3, t_fuse3]
     bounds = [
-        (70, 140),  # v_FY1 (m/s)
-        (np.pi * 170 / 180, np.pi * 190 / 180),
-        (0, 5),  # t_drop1 (s)
-        (0, 5),  # t_fuse1 (s)
-        (1, 5),  # Δt_drop2 (s)
-        (0, 5),  # t_fuse2 (s)
-        (1, 5),  # Δt_drop3 (s)
-        (0, 5),  # t_fuse3 (s)
+        (70, 140),  # v_FY1: 速度
+        (np.pi * 170 / 180, np.pi * 190 / 180),  # θ_FY1: 角度 [170°, 190°]
+        (0, 5),  # t_drop1: 投放时间
+        (0, 5),  # t_fuse1: 引信时间
+        (1, 5),  # dt_drop2: 第二枚弹药相对第一枚的投放时间差
+        (0, 5),  # t_fuse2: 第二枚弹药引信时间
+        (1, 5),  # dt_drop3: 第三枚弹药相对第二枚的投放时间差
+        (0, 5),  # t_fuse3: 第三枚弹药引信时间
     ]
 
-    # 2. 调用差分进化算法
     print("开始优化 (8维空间，计算量较大，请耐心等待)...")
     start_time = time.time()
 
@@ -194,23 +166,20 @@ def run_optimization_Q3():
         popsize=25,
         tol=0.01,
         disp=True,
-        workers=-1,  # 使用所有CPU核心并行计算
+        workers=-1,
     )
 
     end_time = time.time()
     print(f"\n优化完成，耗时: {end_time - start_time:.2f} 秒")
 
-    # 3. 处理并保存结果
     if result.success:
         p = result.x
         max_time = -result.fun
 
-        # 还原真实的投放时间
         t_drop1 = p[2]
         t_drop2 = p[2] + p[4]
         t_drop3 = t_drop2 + p[6]
 
-        # 提取最优参数
         v_opt, theta_opt = p[0], p[1]
         params_list = [(t_drop1, p[3]), (t_drop2, p[5]), (t_drop3, p[7])]
 
@@ -223,64 +192,133 @@ def run_optimization_Q3():
         print("------------------------------------")
         print(f"最大总有效遮蔽时长: {max_time:.4f} s")
 
-        # 4. 生成并保存 result1.xlsx
-        save_results_to_excel(v_opt, theta_opt, params_list)
+        save_results_to_excel_custom_format(v_opt, theta_opt, params_list, max_time)
 
     else:
         print("\n优化未成功收敛。可以尝试增加 maxiter 或 popsize。")
 
 
-def save_results_to_excel(v, theta_rad, params_list):
-    """将最优策略的详细信息保存到 result1.xlsx"""
+def save_results_to_excel_custom_format(v, theta_rad, params_list, max_time):
+    """将最优策略的详细信息按照指定的报告格式保存到 result1.xlsx"""
     print("\n正在生成 result1.xlsx 文件...")
 
-    results_data = []
+    # --- 1. 预计算所有需要填入的数据 ---
+    direction_deg = np.rad2deg(theta_rad) % 360  # 确保角度在0-360
     d_FY1 = np.array([np.cos(theta_rad), np.sin(theta_rad), 0.0])
 
+    grenade_data = []
     for i, (t_drop, t_fuse) in enumerate(params_list):
-        # 计算投放点
         p_drop = P_FY1_0 + v * t_drop * d_FY1
-        # 计算起爆点
         v_drop = v * d_FY1
         p_detonate = p_drop + v_drop * t_fuse + np.array([0, 0, -0.5 * g * t_fuse**2])
+        grenade_data.append(
+            {"id": f"G{i+1}", "p_drop": p_drop, "p_detonate": p_detonate}
+        )
 
-        row = {
-            "无人机编号": "FY1",
-            "烟幕弹编号": f"G{i+1}",
-            "飞行方向（度）": np.rad2deg(theta_rad),
-            "飞行速度（m/s）": v,
-            "投放点x": p_drop[0],
-            "投放点y": p_drop[1],
-            "投放点z": p_drop[2],
-            "起爆点x": p_detonate[0],
-            "起爆点y": p_detonate[1],
-            "起爆点z": p_detonate[2],
-        }
-        results_data.append(row)
+    # --- 2. 使用 openpyxl 创建并写入工作簿 ---
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "问题三最优策略"
 
-    df = pd.DataFrame(results_data)
+    # 写入标题行
+    ws.append(["", "1", "2", "3"])
 
-    # 确保列的顺序与模板文件一致
-    column_order = [
-        "无人机编号",
-        "烟幕弹编号",
-        "飞行方向（度）",
-        "飞行速度（m/s）",
-        "投放点x",
-        "投放点y",
-        "投放点z",
-        "起爆点x",
-        "起爆点y",
-        "起爆点z",
-    ]
-    df = df[column_order]
+    # 写入数据行
+    ws.append(["无人机运动方向", direction_deg, direction_deg, direction_deg])
+    ws.append(["无人机运动速度 (m/s)", v, v, v])
+    ws.append(
+        [
+            "烟幕干扰弹编号",
+            grenade_data[0]["id"],
+            grenade_data[1]["id"],
+            grenade_data[2]["id"],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹投放点的x坐标 (m)",
+            grenade_data[0]["p_drop"][0],
+            grenade_data[1]["p_drop"][0],
+            grenade_data[2]["p_drop"][0],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹投放点的y坐标 (m)",
+            grenade_data[0]["p_drop"][1],
+            grenade_data[1]["p_drop"][1],
+            grenade_data[2]["p_drop"][1],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹投放点的z坐标 (m)",
+            grenade_data[0]["p_drop"][2],
+            grenade_data[1]["p_drop"][2],
+            grenade_data[2]["p_drop"][2],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹起爆点的x坐标 (m)",
+            grenade_data[0]["p_detonate"][0],
+            grenade_data[1]["p_detonate"][0],
+            grenade_data[2]["p_detonate"][0],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹起爆点的y坐标 (m)",
+            grenade_data[0]["p_detonate"][1],
+            grenade_data[1]["p_detonate"][1],
+            grenade_data[2]["p_detonate"][1],
+        ]
+    )
+    ws.append(
+        [
+            "烟幕干扰弹起爆点的z坐标 (m)",
+            grenade_data[0]["p_detonate"][2],
+            grenade_data[1]["p_detonate"][2],
+            grenade_data[2]["p_detonate"][2],
+        ]
+    )
+    ws.append(["有效干扰时长 (s)", max_time, "", ""])
 
-    # 保存到Excel文件
+    # 空一行
+    ws.append([])
+
+    # 写入注释
+    ws.append(["注：以x轴为正向，逆时针方向为正，取值0~360（度）。"])
+
+    # --- 3. 设置格式 ---
+    # 合并单元格
+    ws.merge_cells("B11:D11")  # 合并有效时长的值单元格
+    ws.merge_cells("A13:D13")  # 合并注释单元格
+
+    # 调整列宽
+    ws.column_dimensions["A"].width = 40
+    for col_letter in ["B", "C", "D"]:
+        ws.column_dimensions[col_letter].width = 20
+
+    # 设置数值格式
+    for row in ws.iter_rows(min_row=2, max_row=11):
+        for cell in row:
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = "0.0000"
+
+    # --- 4. 保存文件 ---
     filename = "result1.xlsx"
-    df.to_excel(filename, index=False, float_format="%.4f")
-    print(f"结果已成功保存到 '{os.path.abspath(filename)}'")
+    try:
+        wb.save(filename)
+        print(f"结果已成功保存到 '{os.path.abspath(filename)}'")
+    except Exception as e:
+        print(f"保存文件失败: {e}")
 
 
 # --- 主程序入口 ---
 if __name__ == "__main__":
-    run_optimization_Q3()
+    # run_optimization_Q3()
+    # v_FY1, theta_rad, t_drop1, t_fuse1, dt_drop2, t_fuse2, dt_drop3, t_fuse3
+    ret = objective_function_Q3((70, 176.5 / 180 * np.pi, 0, 2.5, 1.2, 3.0, 1.3, 3.5))
+    print(ret)
+    pass
